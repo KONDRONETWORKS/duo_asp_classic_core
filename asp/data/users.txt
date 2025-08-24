@@ -1,0 +1,6 @@
+# username:password
+admin:password123
+user:user123 
+tcotidiane@gmail.com:password123
+support@kondronetworks.com:dexbyf-Sukfaf-fyvny2
+gervaisaka@kondronetworks.com:Ntechnologies1#

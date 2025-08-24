@@ -1,0 +1,31 @@
+Configuration Duo Web SDK v4 pour ASP Classic
+===============================================
+
+1. REMPLACER les valeurs dans includes/duo_auth.asp :
+
+   Const DUO_CLIENT_ID = "DIQ8BOPVUCELV4V4S4H0"
+   Const DUO_CLIENT_SECRET = "G702NyF96D1eKge9AbdrVJOb7o7IVJ19B6xh0E5I" 
+   Const DUO_API_HOST = "api-a322db2c.duosecurity.com"
+   Const DUO_REDIRECT_URI = "http://localhost/duo_callback.asp"
+
+2. OBTENIR vos credentials Duo :
+   - Connectez-vous à votre console Duo Admin
+   - Allez dans Applications > Protect an application
+   - Sélectionnez "Web SDK"
+   - Notez : Client ID, Client Secret, API Hostname
+
+3. CONFIGURER l'URL de redirection :
+   - Dans Duo, ajoutez : http://localhost/duo_callback.asp
+   - Remplacez par votre vrai domaine
+
+4. FLUX D'AUTHENTIFICATION :
+   login.asp → duo_auth.asp → Duo → duo_callback.asp → protected.asp
+
+5. SÉCURITÉ :
+   - Le state parameter protège contre les attaques CSRF
+   - Les sessions sont nettoyées après déconnexion
+   - Validation des paramètres d'état
+
+6. TEST :
+   - Utilisez les comptes de test : admin/password123, user/user123
+   - L'authentification Duo sera déclenchée après la connexion initiale 
