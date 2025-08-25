@@ -164,10 +164,7 @@ C:\inetpub\wwwroot\asp
 ├── protected.asp           # Page protégée accessible après MFA
 ├── includes\               # Inclut fichiers ASP Classic (auth.asp, duo_auth.asp, etc.)
 ├── DuoAuthCore\            # Projet API .NET Core
-│   ├── Controllers\        # Contrôleurs API (DuoAuthController.cs)
-│   ├── Services\           # Classes services (DuoClientProvider, etc.)
 │   ├── appsettings.json    # Configuration application
-│   └── Startup.cs          # Configuration middleware et services
 ├── README.md               # Ce fichier
 └── ...
 ```
