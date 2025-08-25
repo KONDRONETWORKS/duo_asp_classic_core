@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "7MnqSZ7GifOQzapGfN8IFmcO06bCV2wdoCtMgz8qBtNyvBP8TOtmdtrOmWcTnM5d62bKqdSwb+IVgUnePIVjmg==",
+  "dgSpecHash": "zUqPhpsfTg5h726YgpWd3PGfD/WVeu82k5N4qv0SUNtihD8jg2Q4llJZR3K2r8BEOJ2M7ee/771FqhTCAMOwRA==",
   "success": true,
   "projectFilePath": "C:\\inetpub\\wwwroot\\DuoAuthCore\\DuoAuthCore.csproj",
   "expectedPackageFiles": [
@@ -20,6 +20,7 @@
     "C:\\Users\\Administrateur\\.nuget\\packages\\microsoft.identitymodel.tokens\\6.34.0\\microsoft.identitymodel.tokens.6.34.0.nupkg.sha512",
     "C:\\Users\\Administrateur\\.nuget\\packages\\microsoft.netcore.platforms\\1.1.0\\microsoft.netcore.platforms.1.1.0.nupkg.sha512",
     "C:\\Users\\Administrateur\\.nuget\\packages\\microsoft.netcore.targets\\1.1.0\\microsoft.netcore.targets.1.1.0.nupkg.sha512",
+    "C:\\Users\\Administrateur\\.nuget\\packages\\system.identitymodel.tokens.jwt\\6.34.0\\system.identitymodel.tokens.jwt.6.34.0.nupkg.sha512",
     "C:\\Users\\Administrateur\\.nuget\\packages\\system.net.http.json\\5.0.0\\system.net.http.json.5.0.0.nupkg.sha512",
     "C:\\Users\\Administrateur\\.nuget\\packages\\system.runtime\\4.3.0\\system.runtime.4.3.0.nupkg.sha512",
     "C:\\Users\\Administrateur\\.nuget\\packages\\system.runtime.compilerservices.unsafe\\6.0.0\\system.runtime.compilerservices.unsafe.6.0.0.nupkg.sha512",

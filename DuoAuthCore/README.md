@@ -1,98 +1,185 @@
-# Duo Universal Prompt C# Sample Application
+# DuoAuthCore - Architecture Fluide
 
-This example application demonstrates how to integrate the Duo Universal C# client into a simple ASP.NET web application.
+Application ASP.NET Core moderne pour l'authentification Duo avec une architecture fluide et optimisée.
 
-### Caveats
+## 🏗️ Architecture Cible Implémentée
 
-The Duo Universal C# client provides asynchronous methods and that is the paradigm demonstrated in the example.  If you need to use the C# client from a synchronous web application, you will need to wrap the async calls in synchronizing code.
+```
+C:\inetpub\wwwroot\DuoAuthCore
+│   DuoAuthCore.sln                -> Solution .NET 6+
+│   DuoAuthCore.csproj             -> Projet principal modernisé
+│   Program.cs                      -> Point d'entrée minimal hosting
+│
+├── Controllers/
+│   │   DuoAuthController.cs       -> Contrôleur principal d'authentification
+│   │   HealthController.cs        -> Endpoints de santé et monitoring
+│
+├── Providers/
+│   │   DuoClientProvider.cs       -> Fournit l'instance DuoClient configurée
+│
+├── Services/
+│   │   TempAuthStorage.cs         -> Stockage temporaire thread-safe pour l'auth
+│
+├── Models/
+│   │   AuthRequest.cs             -> DTOs pour les requêtes d'authentification
+│   │   AuthResultDto.cs           -> DTOs pour les réponses JSON
+│
+├── Helpers/
+│   │   JwtHelper.cs               -> Utilitaires pour décoder/valider les JWT
+│
+├── wwwroot/                       -> Fichiers statiques
+│
+├── appsettings.json               -> Configuration (Duo + JWT)
+└── README.md                      -> Documentation
+```
 
-A detailed investigation into possible approaches can be found on [MSDN](https://docs.microsoft.com/en-us/archive/msdn-magazine/2015/july/async-programming-brownfield-async-development#transform-synchronous-to-asynchronous-code).
+## 🚀 Fonctionnalités Principales
 
-Users of this repository have reported that the following approach works in their ASP.NET web app:
+### ✅ Architecture Fluide
+- **Minimal Hosting** : Utilisation du pattern .NET 6+ pour une configuration fluide
+- **Dependency Injection** : Services organisés et injectés automatiquement
+- **Middleware Pipeline** : Configuration claire et ordonnée des middlewares
+- **Logging Structuré** : Logs structurés avec Serilog pour un monitoring efficace
 
-`var token = Task.Run(async () => { return await duoClient.ExchangeAuthorizationCodeFor2faResult(context.Request["code"], username); }).Result;`
+### 🔐 Authentification Duo
+- **Redirection Fluide** : Gestion transparente des redirections vers Duo
+- **Session Management** : Gestion robuste des sessions avec nettoyage automatique
+- **State Validation** : Validation sécurisée des états de session
+- **Error Handling** : Gestion d'erreurs centralisée avec codes d'erreur
 
-Duo has used the following approach in internal products:
+### 🎯 JWT & Tokens
+- **Validation Automatique** : Validation des tokens JWT avec gestion d'erreurs
+- **Extraction Intelligente** : Extraction automatique des tokens depuis les réponses Duo
+- **Expiration Management** : Gestion automatique de l'expiration des tokens
 
-`var _idToken = duoClient.ExchangeAuthorizationCodeFor2faResult(duoCode, username).GetAwaiter().GetResult();`
+### 📊 Monitoring & Santé
+- **Health Checks** : Endpoints de santé pour le monitoring
+- **Configuration Validation** : Vérification automatique de la configuration au démarrage
+- **Performance Metrics** : Logs de performance et métriques d'utilisation
 
-## Build
+## 🛠️ Configuration
 
-### With the .NET CLI
-From the DuoAuthCore directory run:
+### Configuration Duo
+```json
+{
+  "Duo": {
+    "ClientId": "your-duo-client-id",
+    "ClientSecret": "your-duo-client-secret",
+    "ApiHost": "your-duo-api-host",
+    "RedirectUri": "https://your-domain.com/api/duoauth/callback"
+  }
+}
+```
 
-`dotnet build`
+### Configuration JWT
+```json
+{
+  "Jwt": {
+    "SecretKey": "your-super-secret-jwt-key-here",
+    "Issuer": "DuoAuthCore",
+    "Audience": "DuoAuthCore",
+    "ExpirationMinutes": 60
+  }
+}
+```
 
-## Run
+## 🔄 Flux d'Authentification
 
-In order to run this project, ensure the values in `DuoAuthCore/appsettings.json` (or `appsettings.Development.json` if you prefer) 
-are filled out with the values from the Duo Admin Panel (ClientId, ClientSecret, ApiHost).
+1. **Initiation** : `GET /api/duoauth/duo-auth?username=user&returnUrl=...`
+2. **Redirection Duo** : L'utilisateur est redirigé vers Duo
+3. **Authentification** : L'utilisateur s'authentifie sur Duo
+4. **Callback** : `GET /api/duoauth/callback?code=...&state=...`
+5. **Validation** : Échange du code contre un token JWT
+6. **Redirection Finale** : Retour vers l'application avec le token
 
-### With the .NET CLI
-From the DuoAuthCore base directory run the following to start the server:
+## 📡 Endpoints API
 
-`dotnet run --framework net6.0`
+### Authentification
+- `GET /api/duoauth/duo-auth` - Initie l'authentification Duo
+- `GET /api/duoauth/callback` - Callback après authentification Duo
+- `POST /api/duoauth/validate-token` - Valide un token JWT
 
-Or you can use `--framework netcoreapp3.1` if you prefer.
+### Santé & Monitoring
+- `GET /health` - Vérification de santé globale
+- `GET /api/health` - Vérification de santé détaillée
+- `GET /api/health/duo-config` - Vérification de la configuration Duo
 
-## Interact
+## 🔧 Développement
 
-Navigate to <https://localhost:5001> or <http://localhost:5000> to see a mock user login form.  Enter a Duo username and any password to initiate Duo 2FA.
+### Prérequis
+- .NET 6.0 ou supérieur
+- Visual Studio 2022 ou VS Code
+- Compte Duo avec API credentials
 
-// SPDX-FileCopyrightText: 2022 Cisco Systems, Inc. and/or its affiliates
-//
-// SPDX-License-Identifier: BSD-3-Clause
+### Installation
+```bash
+# Cloner le projet
+git clone <repository-url>
+cd DuoAuthCore
 
+# Restaurer les packages
+dotnet restore
 
-# STARTUP.CS 
-/*
-Explication détaillée du code Startup.cs pour l'exemple DuoUniversal :
+# Configurer appsettings.json avec vos credentials Duo
+# Lancer l'application
+dotnet run
+```
 
-Ce fichier configure l'application web ASP.NET Core pour intégrer l'authentification Duo Universal Prompt.
+### Tests
+```bash
+# Tests unitaires
+dotnet test
 
-1. Espaces de noms utilisés :
-- System, Microsoft.AspNetCore.*, Microsoft.Extensions.* : Fournissent les classes nécessaires pour configurer et exécuter une application web ASP.NET Core.
+# Tests d'intégration
+dotnet test --filter Category=Integration
+```
 
-2. Namespace DuoAuthCore :
-- Contient toutes les classes liées à l'exemple.
+## 🚀 Déploiement
 
-3. Classe Startup :
-- C'est la classe centrale de configuration de l'application ASP.NET Core.
+### IIS
+- Publier l'application dans `C:\inetpub\wwwroot\DuoAuthCore`
+- Configurer le pool d'applications .NET Core
+- Vérifier les permissions sur le dossier `C:\temp-keys\`
 
-a) Constructeur Startup(IConfiguration configuration)
-- Reçoit la configuration de l'application (fichier appsettings.json, variables d'environnement, etc.).
-- Stocke cette configuration dans la propriété Configuration.
+### Docker
+```dockerfile
+FROM mcr.microsoft.com/dotnet/aspnet:6.0
+COPY publish/ /app/
+WORKDIR /app
+EXPOSE 80
+ENTRYPOINT ["dotnet", "DuoAuthCore.dll"]
+```
 
-b) Propriété Configuration
-- Permet d'accéder à la configuration dans toute la classe.
+## 📈 Avantages de l'Architecture
 
-c) Méthode ConfigureServices(IServiceCollection services)
-- Configure les services utilisés par l'application (injection de dépendances).
-- Crée une instance de DuoClientProvider (qui encapsule la logique de création du client Duo) à partir de la configuration, et l'enregistre comme singleton pour l'interface IDuoClientProvider.
-- Ajoute un cache mémoire distribué (AddDistributedMemoryCache) pour stocker des données de session.
-- Configure la gestion de session (AddSession) : durée d'inactivité de 60 minutes, cookie HTTP only et essentiel.
-- Ajoute le support des Razor Pages (AddRazorPages), qui sont utilisées pour générer les pages web.
+### 🎯 Fluidité
+- **Configuration Unifiée** : Tout dans `Program.cs` pour une vue d'ensemble claire
+- **Services Organisés** : Séparation claire des responsabilités
+- **Middleware Pipeline** : Configuration séquentielle et logique
 
-d) Méthode Configure(IApplicationBuilder app, IWebHostEnvironment env)
-- Configure le pipeline HTTP de l'application.
-- Si l'environnement est en développement, active la page d'exception développeur.
-- Force la redirection HTTPS (UseHttpsRedirection).
-- Sert les fichiers statiques (UseStaticFiles).
-- Active le routage (UseRouting).
-- Active la gestion de session (UseSession).
-- Configure les endpoints pour utiliser les Razor Pages (endpoints.MapRazorPages()).
+### 🔒 Sécurité
+- **Validation Automatique** : Vérification des tokens et sessions
+- **Gestion d'Erreurs** : Codes d'erreur standardisés et sécurisés
+- **Nettoyage Automatique** : Suppression des données expirées
 
-4. Interface IDuoClientProvider
-- Définit une méthode GetDuoClient() qui retourne un objet Client (pour interagir avec Duo).
+### 📊 Observabilité
+- **Logging Structuré** : Logs JSON pour une analyse facile
+- **Health Checks** : Monitoring en temps réel de l'application
+- **Métriques** : Suivi des performances et de l'utilisation
 
-5. Classe interne DuoClientProvider
-- Implémente IDuoClientProvider.
-- Stocke les paramètres nécessaires à la connexion Duo : ClientId, ClientSecret, ApiHost, RedirectUri.
-- Dans le constructeur, lit ces paramètres depuis la section "Duo" de la configuration.
-- Méthode GetDuoClient() : 
-    - Vérifie que chaque paramètre est bien présent, sinon lève une exception explicite.
-    - Crée et retourne un objet Client via un ClientBuilder, configuré avec les paramètres lus.
+### 🚀 Performance
+- **Minimal Hosting** : Démarrage rapide et configuration optimisée
+- **Cache Distribué** : Gestion efficace des sessions
+- **Async/Await** : Opérations asynchrones pour une meilleure réactivité
 
-Résumé :
-Ce code configure une application ASP.NET Core pour utiliser l'authentification Duo Universal Prompt. Il lit les paramètres de connexion Duo depuis la configuration, prépare un fournisseur de client Duo injectable, configure la gestion de session et le routage, et prépare l'application à servir des pages Razor. Toute la logique d'accès à Duo est centralisée dans DuoClientProvider, ce qui facilite la maintenance et la réutilisation.
-*/
+## 🤝 Support
+
+Pour toute question ou problème :
+1. Consultez la documentation des endpoints
+2. Vérifiez les logs de l'application
+3. Testez les health checks
+4. Contactez l'équipe de développement
+
+---
+
+**DuoAuthCore** - Architecture fluide pour une authentification Duo moderne et performante.

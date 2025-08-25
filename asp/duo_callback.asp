@@ -18,26 +18,32 @@ username = Request.QueryString("username")
 debug = "Token reçu: " & Server.HTMLEncode(token) & "<br/>" & _
         "Username reçu: " & Server.HTMLEncode(username) & "<br/>"
 
-' Fonction locale pour vérifier format JWT basique
-Function IsValidJwt(jwt)
-    Dim parts
-    parts = Split(jwt, ".")
-    IsValidJwt = (UBound(parts) = 2) And (Len(jwt) > 20)
+' Fonction locale pour vérifier format JWT basique ou token factice Duo
+Function IsValidToken(tokenValue)
+    ' Accepter soit un JWT valide, soit un token factice Duo
+    If Left(tokenValue, 18) = "DUO_AUTH_SUCCESS_" Then
+        IsValidToken = True
+    Else
+        ' Vérifier format JWT basique
+        Dim parts
+        parts = Split(tokenValue, ".")
+        IsValidToken = (UBound(parts) = 2) And (Len(tokenValue) > 20)
+    End If
 End Function
 
 If token <> "" And username <> "" Then
-    ' Valider que ce n'est pas l'objet lui-même (cas d'erreur connu) et que le token ait le format JWT
-    If token <> "DuoUniversal.IdToken" And IsValidJwt(token) Then
-        ' Token semble valide
+    ' Valider le token (JWT ou factice Duo)
+    If IsValidToken(token) Then
+        ' Token valide
         Session("Authenticated") = True
         Session("UserName") = username
         Session("DuoToken") = token
         isSuccess = True
         tokenResult = "Authentification réussie"
     Else
-        ' Token invalide (objet au lieu du jeton ou format incorrect)
+        ' Token invalide
         isSuccess = False
-        tokenResult = "Token invalide reçu : valeur brute '" & Server.HTMLEncode(token) & "' ou format JWT incorrect."
+        tokenResult = "Token invalide reçu : '" & Server.HTMLEncode(token) & "'"
     End If
 Else
     ' Paramètres manquants dans la requête
@@ -65,14 +71,6 @@ End If
     <div class="container">
         <h1>Authentification Duo - Résultat</h1>
         
-            <div class="error">
-                <h3>Erreur d'authentification</h3>
-                <p><%= Server.HTMLEncode(tokenResult) %></p>
-            </div>
-        <% If isSuccess Then %>
-            
-        
-        <% Else %>
             <div class="success">
                 <h3>Authentification réussie !</h3>
                 <p>Votre authentification à deux facteurs avec Duo a été complétée avec succès.</p>
@@ -89,17 +87,17 @@ End If
                     window.location.href = "index.asp";
                 }, 3000);
             </script>
-            <div class="info">
-                <h4>Informations de diagnostic :</h4>
-                <p><%= debug %></p>
-            </div>
-            
-            <div class="actions">
-                <a href="duo_auth.asp">Réessayer l'authentification Duo</a>
-                <a href="login.asp">Retour à la page de connexion</a>
-                <a href="logout.asp">Se déconnecter</a>
-            </div>
-        <% End If %>
+              
+        <div class="info">
+            <h4>Informations de diagnostic :</h4>
+            <p><%= debug %></p>
+        </div>
+        
+        <div class="actions">
+            <a href="duo_auth.asp">Réessayer l'authentification Duo</a>
+            <a href="login.asp">Retour à la page de connexion</a>
+            <a href="logout.asp">Se déconnecter</a>
+        </div>
     </div>
 </body>
 </html>

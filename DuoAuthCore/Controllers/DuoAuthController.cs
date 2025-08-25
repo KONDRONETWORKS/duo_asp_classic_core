@@ -1,12 +1,18 @@
-using System; // Pour Console, Guid, etc.
-using System.Threading.Tasks; // Pour async/await
-using Microsoft.AspNetCore.Http; // Pour HttpContextAccessor
-using Microsoft.AspNetCore.Mvc; // Pour ApiController, ControllerBase
-using Microsoft.Extensions.Configuration; // Pour IConfiguration
-using DuoUniversal; // Pour Client, IdToken, etc.
+using System;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using DuoAuthCore.Providers;
+using DuoAuthCore.Services;
 
 namespace DuoAuthCore.Controllers
 {
+    /// <summary>
+    /// Contrôleur principal pour l'authentification Duo
+    /// Utilise directement les classes officielles de Duo
+    /// </summary>
     [ApiController]
     [Route("api/[controller]")]
     public class DuoAuthController : ControllerBase
@@ -14,39 +20,39 @@ namespace DuoAuthCore.Controllers
         private readonly IDuoClientProvider _duoClientProvider;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IConfiguration _configuration;
+        private readonly ILogger<DuoAuthController> _logger;
+        private readonly TempAuthStorage _tempAuthStorage;
 
-        public DuoAuthController(IDuoClientProvider duoClientProvider, IHttpContextAccessor httpContextAccessor, IConfiguration configuration)
+        public DuoAuthController(
+            IDuoClientProvider duoClientProvider, 
+            IHttpContextAccessor httpContextAccessor, 
+            IConfiguration configuration,
+            ILogger<DuoAuthController> logger,
+            TempAuthStorage tempAuthStorage)
         {
             _duoClientProvider = duoClientProvider;
             _httpContextAccessor = httpContextAccessor;
             _configuration = configuration;
-        }
-
-        [HttpGet("health")]
-        public IActionResult HealthCheck()
-        {
-            return Ok(new { status = "healthy", message = "ASP.NET Core Duo Auth is running" });
-        }
-
-        [HttpGet("validate")]
-        public IActionResult ValidateToken([FromQuery] string token)
-        {
-            // Ici, vous validerez le token JWT
-            return Ok(new { valid = true, message = "Token is valid" });
+            _logger = logger;
+            _tempAuthStorage = tempAuthStorage;
         }
 
         /// <summary>
-        /// Endpoint direct pour l'authentification Duo depuis ASP Classic
+        /// Endpoint pour l'authentification Duo depuis ASP Classic
         /// Redirige directement vers Duo après avoir initialisé la session
         /// </summary>
+        /// <param name="username">Nom d'utilisateur</param>
+        /// <param name="returnUrl">URL de retour (optionnel)</param>
+        /// <returns>Redirection vers Duo ou erreur</returns>
         [HttpGet("duo-auth")]
-        public IActionResult DuoAuth([FromQuery] string username, [FromQuery] string returnUrl)
+        public IActionResult DuoAuth([FromQuery] string username, [FromQuery] string? returnUrl = null)
         {
             try
             {
                 if (string.IsNullOrEmpty(username))
                 {
-                    return BadRequest(new { Error = "Nom d'utilisateur requis" });
+                    _logger.LogWarning("Tentative d'authentification sans nom d'utilisateur");
+                    return BadRequest(new { error = "Nom d'utilisateur requis" });
                 }
 
                 var session = _httpContextAccessor.HttpContext.Session;
@@ -59,240 +65,140 @@ namespace DuoAuthCore.Controllers
                 var state = Guid.NewGuid().ToString();
                 session.SetString("_State", state);
 
-                // Utiliser la méthode CORRECTE GenerateAuthUri (comme dans LoginModel)
+                // Stocker les données temporaires
+                var authData = new AuthData
+                {
+                    Username = username,
+                    State = state,
+                    ReturnUrl = returnUrl ?? string.Empty
+                };
+                _tempAuthStorage.Store(state, authData);
+
+                // Utiliser la méthode officielle de Duo pour créer l'URL d'authentification
                 var duoClient = _duoClientProvider.GetDuoClient();
                 var authUrl = duoClient.GenerateAuthUri(username, state);
                 
-                Console.WriteLine($"Redirection directe vers Duo pour l'utilisateur: {username}");
-                Console.WriteLine($"URL Duo: {authUrl}");
+                _logger.LogInformation("Redirection vers Duo pour l'utilisateur: {Username}", username);
+                _logger.LogDebug("URL Duo: {AuthUrl}", authUrl);
 
                 // Rediriger directement vers Duo
                 return Redirect(authUrl);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Erreur dans duo-auth: {ex.Message}");
-                return StatusCode(500, new { Error = "Erreur lors de l'initialisation de l'authentification Duo", Details = ex.Message });
+                _logger.LogError(ex, "Erreur lors de l'initialisation de l'authentification Duo");
+                return StatusCode(500, new { error = "Erreur lors de l'initialisation de l'authentification Duo" });
             }
         }
 
         /// <summary>
         /// Endpoint de callback après authentification Duo
-        /// Redirige vers l'application ASP Classic avec le token et username
+        /// Utilise directement la logique officielle de Duo
         /// </summary>
+        /// <param name="code">Code d'autorisation Duo</param>
+        /// <param name="state">État de la session</param>
+        /// <returns>Redirection vers l'application ASP Classic</returns>
         [HttpGet("callback")]
         public async Task<IActionResult> Callback([FromQuery] string code, [FromQuery] string state)
         {
             if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
-                return BadRequest(new { Error = "Code ou state manquant" });
+            {
+                _logger.LogWarning("Callback invalide: code ou state manquant");
+                return BadRequest(new { error = "Code ou state manquant" });
+            }
 
             var sessionUsername = HttpContext.Session.GetString("_Username");
             if (string.IsNullOrEmpty(sessionUsername))
-                return BadRequest(new { Error = "Session invalide, username introuvable" });
+            {
+                _logger.LogWarning("Session invalide: username introuvable");
+                return BadRequest(new { error = "Session invalide, username introuvable" });
+            }
 
             try
             {
+                // Utiliser directement la méthode officielle de Duo
                 var duoClient = _duoClientProvider.GetDuoClient();
-                var idTokenObj = await duoClient.ExchangeAuthorizationCodeFor2faResult(code, sessionUsername);
+                var idToken = await duoClient.ExchangeAuthorizationCodeFor2faResult(code, sessionUsername);
 
-                if (idTokenObj == null)
-                    return BadRequest(new { Error = "Échec de l'échange du code d'autorisation" });
-
-                // Récupérer l'AuthResult depuis IdToken
-                var authResultProp = idTokenObj.GetType().GetProperty("AuthResult");
-                if (authResultProp == null)
-                    return BadRequest(new { Error = "Propriété 'AuthResult' introuvable" });
-
-                var authResult = authResultProp.GetValue(idTokenObj);
-
-                // Vérifier le résultat MFA
-                var result = authResult.GetType().GetProperty("Result")?.GetValue(authResult) as string;
-                var statusMsg = authResult.GetType().GetProperty("StatusMsg")?.GetValue(authResult) as string;
-
-                if (result != "allow")
+                if (idToken == null)
                 {
-                    return Unauthorized(new { Error = "Authentification Duo refusée", Status = statusMsg ?? "Unknown" });
+                    _logger.LogError("Échec de l'échange du code d'autorisation");
+                    return BadRequest(new { error = "Échec de l'échange du code d'autorisation" });
                 }
 
-                // Extraire le token JWT depuis IdToken.IdToken
-                string idToken = null;
-                var idTokenProperty = idTokenObj.GetType().GetProperty("IdToken");
-                if (idTokenProperty != null)
-                    idToken = idTokenProperty.GetValue(idTokenObj) as string;
-
-                if (string.IsNullOrEmpty(idToken) || idToken == "DuoUniversal.IdToken")
+                // Vérifier le résultat MFA via la classe officielle AuthResult
+                if (idToken.AuthResult?.Result != "allow")
                 {
-                    // Fallback : recherche récursive du JWT dans l'objet
-                    idToken = ExtractTokenFromIdToken(idTokenObj);
+                    _logger.LogWarning("Authentification Duo refusée pour l'utilisateur: {Username}, Status: {Status}", 
+                        sessionUsername, idToken.AuthResult?.StatusMsg);
+                    return Unauthorized(new { error = "Authentification Duo refusée" });
                 }
 
-                if (string.IsNullOrEmpty(idToken))
-                    return BadRequest(new { Error = "Token JWT manquant dans AuthResult" });
+                _logger.LogInformation("Authentification Duo réussie pour l'utilisateur: {Username}", sessionUsername);
 
-                Console.WriteLine($"JWT reçu: {idToken.Substring(0, Math.Min(50, idToken.Length))}...");
+                // Récupérer l'URL de retour depuis le stockage temporaire
+                var authData = _tempAuthStorage.Retrieve(state);
+                var returnUrl = authData?.ReturnUrl ?? "http://localhost/asp/duo_callback.asp";
 
-                var redirectUrl = $"http://localhost/asp/duo_callback.asp?token={Uri.EscapeDataString(idToken)}&username={Uri.EscapeDataString(sessionUsername)}";
+                // Construire l'URL de redirection avec le token JWT complet
+                // Le token JWT est accessible via idToken.IdToken si nécessaire
+                var redirectUrl = $"{returnUrl}?username={Uri.EscapeDataString(sessionUsername)}&auth_result=success&token={Uri.EscapeDataString(idToken.ToString())}";
+                
+                // Nettoyer les données temporaires
+                _tempAuthStorage.Remove(state);
+
                 return Redirect(redirectUrl);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { Error = "Erreur durant le callback Duo", Details = ex.Message });
+                _logger.LogError(ex, "Erreur durant le callback Duo");
+                return StatusCode(500, new { error = "Erreur durant le callback Duo" });
             }
         }
 
-
-
-
-
-
-        // Méthode helper pour extraire le token de l'objet IdToken
-        // private string ExtractTokenFromIdToken(object idTokenObj)
-        // {
-        //     Console.WriteLine("=== DEBUG EXTRACT TOKEN ===");
-            
-        //     // Essayer d'abord ToString()
-        //     string token = idTokenObj.ToString();
-        //     Console.WriteLine($"ToString() result: {token}");
-            
-        //     try
-        //     {
-        //         // Accéder à la propriété AuthResult
-        //         var authResultProperty = idTokenObj.GetType().GetProperty("AuthResult");
-        //         if (authResultProperty != null)
-        //         {
-        //             var authResult = authResultProperty.GetValue(idTokenObj);
-        //             Console.WriteLine($"AuthResult type: {authResult?.GetType().FullName}");
-                    
-        //             if (authResult != null)
-        //             {
-        //                 // Chercher une propriété contenant le token dans AuthResult
-        //                 var authResultProperties = authResult.GetType().GetProperties();
-        //                 foreach (var prop in authResultProperties)
-        //                 {
-        //                     var value = prop.GetValue(authResult);
-        //                     Console.WriteLine($"- AuthResult.{prop.Name}: {value} (Type: {value?.GetType().Name})");
-                            
-        //                     if (value is string stringValue && stringValue.Length > 100 && stringValue.Contains('.'))
-        //                     {
-        //                         if (stringValue.Split('.').Length == 3) // Vérifier le format JWT
-        //                         {
-        //                             token = stringValue;
-        //                             Console.WriteLine($"JWT trouvé dans AuthResult.{prop.Name}");
-        //                             break;
-        //                         }
-        //                     }
-        //                 }
-        //             }
-        //         }
-                
-        //         // Si toujours pas trouvé, chercher dans les autres propriétés
-        //         if (token == "DuoUniversal.IdToken")
-        //         {
-        //             var properties = idTokenObj.GetType().GetProperties();
-        //             foreach (var prop in properties)
-        //             {
-        //                 var value = prop.GetValue(idTokenObj);
-        //                 Console.WriteLine($"- {prop.Name}: {value} (Type: {value?.GetType().Name})");
-                        
-        //                 if (value is string stringValue && stringValue.Length > 100 && stringValue.Contains('.'))
-        //                 {
-        //                     if (stringValue.Split('.').Length == 3)
-        //                     {
-        //                         token = stringValue;
-        //                         Console.WriteLine($"JWT trouvé dans {prop.Name}");
-        //                         break;
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     }
-        //     catch (Exception ex)
-        //     {
-        //         Console.WriteLine($"Erreur lors de l'extraction: {ex.Message}");
-        //     }
-            
-        //     Console.WriteLine($"Final token: {(string.IsNullOrEmpty(token) ? "NULL" : token.Substring(0, Math.Min(50, token.Length)) + "...")}");
-        //     Console.WriteLine("========================");
-            
-        //     return token;
-        // }
-        // private string ExtractTokenFromIdToken(object idTokenObj)
-        // {
-        //     try
-        //     {
-        //         // Méthode 1: Accéder à AuthResult puis à ses propriétés
-        //         var authResultProp = idTokenObj.GetType().GetProperty("AuthResult");
-        //         if (authResultProp != null)
-        //         {
-        //             var authResult = authResultProp.GetValue(idTokenObj);
-                    
-        //             // Essayer les propriétés courantes dans AuthResult
-        //             var idTokenProp = authResult.GetType().GetProperty("IdToken");
-        //             var accessTokenProp = authResult.GetType().GetProperty("AccessToken");
-        //             var jwtProp = authResult.GetType().GetProperty("Jwt");
-                    
-        //             if (idTokenProp != null)
-        //             {
-        //                 var value = idTokenProp.GetValue(authResult) as string;
-        //                 if (!string.IsNullOrEmpty(value)) return value;
-        //             }
-                    
-        //             if (accessTokenProp != null)
-        //             {
-        //                 var value = accessTokenProp.GetValue(authResult) as string;
-        //                 if (!string.IsNullOrEmpty(value)) return value;
-        //             }
-                    
-        //             if (jwtProp != null)
-        //             {
-        //                 var value = jwtProp.GetValue(authResult) as string;
-        //                 if (!string.IsNullOrEmpty(value)) return value;
-        //             }
-        //         }
-                
-        //         // Méthode 2: Fallback vers ToString()
-        //         return idTokenObj.ToString();
-        //     }
-        //     catch (Exception ex)
-        //     {
-        //         Console.WriteLine($"Erreur extraction token: {ex.Message}");
-        //         return idTokenObj.ToString();
-        //     }
-        // }
-        private string ExtractTokenFromIdToken(object idTokenObj)
+        /// <summary>
+        /// Endpoint pour valider un token JWT en utilisant les utilitaires officiels de Duo
+        /// </summary>
+        /// <param name="token">Token JWT à valider</param>
+        /// <returns>Résultat de la validation</returns>
+        [HttpGet("validate-token")]
+        public IActionResult ValidateToken([FromQuery] string token)
         {
-            return FindJwtTokenRecursive(idTokenObj, 0) ?? idTokenObj.ToString();
-        }
-
-        private string FindJwtTokenRecursive(object obj, int depth)
-        {
-            if (depth > 3) return null; // Limite de récursion
-            
-            if (obj == null) return null;
-            
-            // Si c'est une string qui ressemble à un JWT
-            if (obj is string str && str.Length > 100 && str.Split('.').Length == 3)
-            {
-                return str;
-            }
-            
-            // Explorer les propriétés de l'objet
             try
             {
-                var properties = obj.GetType().GetProperties();
-                foreach (var prop in properties)
+                if (string.IsNullOrEmpty(token))
                 {
-                    var value = prop.GetValue(obj);
-                    var result = FindJwtTokenRecursive(value, depth + 1);
-                    if (result != null) return result;
+                    return BadRequest(new { error = "Token requis" });
+                }
+
+                // Utiliser directement les utilitaires officiels de Duo pour décoder le token
+                var decodedToken = DuoAuthCore.Utils.DecodeToken(token);
+                
+                if (decodedToken != null)
+                {
+                    return Ok(new
+                    {
+                        success = true,
+                        username = decodedToken.Username,
+                        expiresAt = decodedToken.Exp,
+                        message = "Token valide"
+                    });
+                }
+                else
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        error = "Token invalide ou malformé",
+                        message = "Impossible de décoder le token"
+                    });
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignorer les erreurs de réflexion
+                _logger.LogError(ex, "Erreur lors de la validation du token");
+                return StatusCode(500, new { error = "Erreur lors de la validation du token" });
             }
-            
-            return null;
         }
     }
 }

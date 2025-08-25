@@ -2,41 +2,115 @@
 //
 // SPDX-License-Identifier: BSD-3-Clause
 
-// Ce fichier définit le point d'entrée principal de l'application web ASP.NET Core pour l'exemple Duo Universal Prompt.
-
 using System;
-using Microsoft.AspNetCore.Hosting;
+using System.IO;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
+using DuoAuthCore.Services;
+using DuoAuthCore.Providers;
+using Microsoft.AspNetCore.DataProtection;
 
-// Le namespace regroupe les classes liées à l'exemple DuoUniversal.
-namespace DuoAuthCore
+var builder = WebApplication.CreateBuilder(args);
+
+// Configuration des services
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+
+// Configuration Duo Client Provider
+builder.Services.AddSingleton<IDuoClientProvider, DuoClientProvider>();
+
+// Configuration DataProtection
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(@"C:\temp-keys\"))
+    .SetApplicationName("DuoAuthCore");
+
+// Services de session et cache
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
 {
-    // La classe Program contient la méthode Main, point d'entrée de l'application.
-    public class Program
-    {
-        // La méthode Main est appelée automatiquement au démarrage de l'application.
-        // Elle reçoit un tableau de chaînes de caractères (args) qui contient les arguments de la ligne de commande.
-        public static void Main(string[] args)
-        {
-            // On crée un "host" (hôte) pour l'application web, puis on le construit et on l'exécute.
-            // Cela démarre le serveur web et l'application ASP.NET Core.
-            CreateHostBuilder(args).Build().Run();
-        }
+    options.IdleTimeout = TimeSpan.FromMinutes(60);
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.None; // Mettre à Always en production avec HTTPS
+    options.Cookie.Name = "DuoAuth.Session";
+});
 
-        // Cette méthode configure et retourne un IHostBuilder, qui prépare l'environnement d'exécution de l'application.
-        // Host.CreateDefaultBuilder configure les paramètres par défaut (configuration, journalisation, etc.).
-        // ConfigureWebHostDefaults configure les paramètres spécifiques à l'hébergement web (Kestrel, IIS, etc.).
-        // webBuilder.UseStartup<Startup>() indique que la classe Startup sera utilisée pour configurer les services et le pipeline HTTP.
-        public static IHostBuilder CreateHostBuilder(string[] args) =>
-            Host.CreateDefaultBuilder(args)
-                .ConfigureWebHostDefaults(webBuilder =>
-                {
-                    webBuilder.UseStartup<Startup>();
-                });
-    }
+// Configuration CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", builder =>
+    {
+        builder.AllowAnyOrigin()
+            .AllowAnyMethod()
+            .AllowAnyHeader();
+    });
+});
+
+// Services d'utilitaires
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<TempAuthStorage>();
+
+// Configuration du logging
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+
+var app = builder.Build();
+
+// Configuration du pipeline HTTP
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
 }
 
-// En résumé :
-// - Ce fichier lance l'application web ASP.NET Core.
-// - Il configure l'environnement d'exécution et indique que la configuration principale se trouve dans la classe Startup.
-// - C'est le point d'entrée standard pour une application ASP.NET Core moderne.
+// Test de la configuration Duo au démarrage
+try
+{
+    var duoProvider = app.Services.GetRequiredService<IDuoClientProvider>();
+    var client = duoProvider.GetDuoClient();
+    app.Logger.LogInformation("✅ Configuration Duo VALIDE");
+}
+catch (Exception ex)
+{
+    app.Logger.LogError("❌ Configuration Duo ERREUR: {Message}", ex.Message);
+}
+
+// Middleware pipeline
+app.UseRouting();
+app.UseCors("AllowAll");
+app.UseSession();
+
+// Middleware de debug de session
+app.Use(async (context, next) =>
+{
+    try
+    {
+        var session = context.Session;
+        if (session != null && session.IsAvailable)
+        {
+            app.Logger.LogDebug("Session ID: {SessionId}, Keys: {Keys}", 
+                session.Id, string.Join(", ", session.Keys));
+        }
+        else
+        {
+            app.Logger.LogWarning("⚠️ La session n'est pas disponible pour cette requête.");
+        }
+    }
+    catch (InvalidOperationException ex)
+    {
+        app.Logger.LogWarning("⚠️ Erreur session: {Message}", ex.Message);
+    }
+    await next();
+});
+
+// Configuration des endpoints
+app.MapControllers();
+
+// Endpoint de santé global
+app.MapGet("/health", () => new { status = "healthy", timestamp = DateTime.UtcNow });
+
+app.Run();
