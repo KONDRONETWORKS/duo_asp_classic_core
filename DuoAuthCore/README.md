@@ -20,15 +20,6 @@ C:\inetpub\wwwroot\DuoAuthCore
 ├── Services/
 │   │   TempAuthStorage.cs         -> Stockage temporaire thread-safe pour l'auth
 │
-├── Models/
-│   │   AuthRequest.cs             -> DTOs pour les requêtes d'authentification
-│   │   AuthResultDto.cs           -> DTOs pour les réponses JSON
-│
-├── Helpers/
-│   │   JwtHelper.cs               -> Utilitaires pour décoder/valider les JWT
-│
-├── wwwroot/                       -> Fichiers statiques
-│
 ├── appsettings.json               -> Configuration (Duo + JWT)
 └── README.md                      -> Documentation
 ```
